@@ -8,40 +8,34 @@ import (
 
 type atomicLimiter struct {
 	limit   int64
-	counter atomic.Int64
+	counter int64
 	cond    *sync.Cond
 }
 
 func newAtomicLimiter(limit int64) *atomicLimiter {
-	return &atomicLimiter{limit, atomic.Int64{}, sync.NewCond(&sync.Mutex{})}
+	return &atomicLimiter{limit, 0, sync.NewCond(&sync.Mutex{})}
 }
 
 func (a *atomicLimiter) Acquire(_ context.Context) error {
-	n := a.counter.Load()
-
-	if n > a.limit {
+	if a.counter > a.limit {
 		a.cond.Wait()
 	}
 
-	for !atomic.CompareAndSwapInt64(&n, n, n+1) {
+	for !atomic.CompareAndSwapInt64(&a.counter, a.counter, a.counter+1) {
 	}
 	return nil
 }
 
 func (a *atomicLimiter) TryAcquire() bool {
-	n := a.counter.Load()
-
-	if n > a.limit {
+	if a.counter > a.limit {
 		return false
 	}
 
-	return atomic.CompareAndSwapInt64(&n, n, n+1)
+	return atomic.CompareAndSwapInt64(&a.counter, a.counter, a.counter+1)
 }
 
 func (a *atomicLimiter) Release() {
-	n := a.counter.Load()
-
-	for !atomic.CompareAndSwapInt64(&n, n, n-1) {
+	for !atomic.CompareAndSwapInt64(&a.counter, a.counter, a.counter-1) {
 	}
 
 	a.cond.Signal()
